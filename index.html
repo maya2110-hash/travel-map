@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connected World Travel Map</title>
+    <!-- Leaflet CSS for Map Styling -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f0f8ff; 
+            margin: 0; 
+            padding: 20px; 
+            text-align: center; 
+        }
+        h1 { color: #2c3e50; margin-bottom: 5px; }
+        p { color: #555; margin-bottom: 20px; }
+        .controls { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            margin-bottom: 20px; 
+            display: inline-block; 
+        }
+        input, select, button { 
+            padding: 10px; 
+            margin: 5px; 
+            border-radius: 5px; 
+            border: 1px solid #ccc; 
+            font-size: 16px; 
+        }
+        button { 
+            background-color: #3498db; 
+            color: white; 
+            border: none; 
+            cursor: pointer; 
+            transition: background 0.3s; 
+        }
+        button:hover { background-color: #2980b9; }
+        #map-wrapper { 
+            background: white; 
+            padding: 15px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            display: inline-block; 
+        }
+        #map { 
+            height: 500px; 
+            width: 800px; 
+            border-radius: 5px; 
+            background-color: #e5e3df;
+        }
+        .btn-download { 
+            background-color: #27ae60; 
+            margin-top: 15px; 
+            width: 100%;
+            font-weight: bold;
+        }
+        .btn-download:hover { background-color: #2ecc71; }
+    </style>
+</head>
+<body>
+    <h1>🗺️ Connected World Travel Map</h1>
+    <p>Map transport connections between India, the UAE, and France!</p>
+    
+    <div class="controls">
+        <input type="text" id="fromCity" placeholder="From City (e.g., Paris)" />
+        <input type="text" id="toCity" placeholder="To City (e.g., Dubai)" />
+        <select id="transportMode">
+            <option value="airway">✈️ Airway</option>
+            <option value="waterway">🚢 Waterway</option>
+            <option value="road">🚗 Road</option>
+            <option value="railway">🚂 Railway</option>
+        </select>
+        <button id="addBtn" onclick="addRoute()">Add Route</button>
+    </div>
+
+    <br>
+
+    <div id="map-wrapper">
+        <div id="map"></div>
+        <button class="btn-download" onclick="downloadMap()">📥 Download Map</button>
+    </div>
+
+    <!-- Leaflet JS for Map Functionality -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- html2canvas for Download Feature -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <script>
+        // Initialize map centered roughly between France, UAE, and India
+        const map = L.map('map').setView([24.0, 54.0], 3);
+
+        // OpenStreetMap tiles - crossOrigin: true is required for html2canvas downloading
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap',
+            crossOrigin: true 
+        }).addTo(map);
+
+        // Function to fetch coordinates using Nominatim (with email parameter to prevent 403)
+        async function getCoordinates(city) {
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&email=school_project@example.com`);
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+                }
+                return null;
+            } catch (error) {
+                console.error("Error fetching coordinates:", error);
+                return null;
+            }
+        }
+
+        // Define line styles based on transport mode
+        const styles = {
+            airway: { color: '#e74c3c', dashArray: '5, 5', weight: 4 }, // Dashed Red
+            waterway: { color: '#3498db', dashArray: '2, 6', weight: 4 }, // Dotted Blue
+            road: { color: '#7f8c8d', dashArray: '', weight: 4 }, // Solid Gray
+            railway: { color: '#2c3e50', dashArray: '15, 10', weight: 5 } // Spaced Dark
+        };
+
+        async function addRoute() {
+            const fromCity = document.getElementById('fromCity').value.trim();
+            const toCity = document.getElementById('toCity').value.trim();
+            const mode = document.getElementById('transportMode').value;
+            const btn = document.getElementById('addBtn');
+
+            if (!fromCity || !toCity) {
+                alert('Please enter both cities!');
+                return;
+            }
+
+            btn.innerText = "Finding cities...";
+            btn.disabled = true;
+
+            const fromCoords = await getCoordinates(fromCity);
+            
+            // 1-second delay to respect OpenStreetMap's usage policy and prevent 403 blocks
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            const toCoords = await getCoordinates(toCity);
+
+            btn.innerText = "Add Route";
+            btn.disabled = false;
+
+            if (!fromCoords || !toCoords) {
+                alert('Could not find coordinates for one or both cities. Check spelling and try again.');
+                return;
+            }
+
+            // Add markers with city labels
+            L.marker(fromCoords).addTo(map).bindPopup(`<b>${fromCity}</b>`).openPopup();
+            L.marker(toCoords).addTo(map).bindPopup(`<b>${toCity}</b>`);
+
+            // Draw line connecting the cities
+            const routeStyle = styles[mode];
+            const polyline = L.polyline([fromCoords, toCoords], routeStyle).addTo(map);
+            
+            // Zoom out smoothly to ensure both cities are visible
+            map.fitBounds(polyline.getBounds(), { padding: [50, 50], maxZoom: 5 });
+        }
+
+        // Function to capture the map container as an image and download it
+        function downloadMap() {
+            const mapElement = document.getElementById('map-wrapper');
+            
+            html2canvas(mapElement, {
+                useCORS: true, 
+                allowTaint: false
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'Connected-World-Map.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).catch(err => {
+                alert("Download blocked. Please open this file using a local web server (like VS Code Live Server) instead of directly from your files.");
+                console.error(err);
+            });
+        }
+    </script>
+</body>
+</html>
